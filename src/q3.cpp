@@ -6,13 +6,16 @@
 
 #define TIME_MSG_LEN 11 // time sync to PC is HEADER followed by Unix time_t as ten ASCII digits
 #define TIME_HEADER 'T' // Header tag for serial time sync message
-#define TIME_REQUEST 7 // ASCII bell character requests a time sync message
-
+#define TIME_REQUEST 7  // ASCII bell character requests a time sync message
 
 Servo servo;
 const int servoPin = 11;
 
 const int buzzerPin = 15;
+const int rainingPin = 27;
+const int soilMoisturePin = A0;
+
+const int LDRPin = A1; // Initialize PIN A0 LDR PIN
 
 // HX711 circuit wiring
 const int LOADCELL_SCK_PIN = 2;
@@ -20,20 +23,18 @@ const int LOADCELL_DOUT_PIN = 3;
 
 HX711 scale;
 
-void fillThePlate();
+void waterTheLand();
 void printDigits(int digits);
 void processSyncMessage();
 void digitalClockDisplay();
-bool checkTimeToFillPlate();
-void turnOffBuzzer();
-void turnOnBuzzer();
+bool checkItIsRaining();
+bool isTheSunLightTooMuch();
+bool checkSoilMoistureIsEnough();
 
 // T1262347200 --> timestamp // Jan 1 2010
 // T1682206406 --> timestamp // Apr 4 2023
 
 // 8:00, 12:00 and 16:00
-int timeToFillThePlate[3][2] = {{8,0}, {12,0}, {16, 0}};
-
 void setup()
 {
     Serial1.begin(9600);
@@ -42,6 +43,7 @@ void setup()
     scale.set_scale(36.059);
 
     servo.attach(servoPin);
+    pinMode(rainingPin, INPUT);
 }
 
 void loop()
@@ -57,17 +59,17 @@ void loop()
     // }
     // digitalClockDisplay();
 
-    const int value = analogRead(A0);
-    const int s = map(value, 0, 1023, 0, 255);
-    if(s > 200) {
-        Serial1.println("moisture is high "+ String(s));
-    } else {
-        Serial1.println("moisture is low "+ String(s));
+
+    const int lightIsTooHigh = isTheSunLightTooMuch();
+    const int itIsRaining = checkItIsRaining();
+    const int soilMoistureIsEnough = checkSoilMoistureIsEnough();
+    if(!lightIsTooHigh && !itIsRaining && !soilMoistureIsEnough) {
+        waterTheLand();
     }
     delay(1000);
 }
 
-void fillThePlate()
+void waterTheLand()
 {
     for (int pos = 0; pos <= 180; pos += 1)
     {
@@ -125,24 +127,49 @@ void processSyncMessage()
     }
 }
 
-bool checkTimeToFillPlate() {
-    const int nowHour = hour();
-    const int nowMinute = minute();
-    for(int i=0; i< 3; i++) {
-        const int hour = timeToFillThePlate[i][0];
-        const int min = timeToFillThePlate[i][1];
-        if( nowHour == hour && nowMinute == min) {
-            return true;
-        }
+bool checkItIsRaining()
+{
+    int itIsRaining = digitalRead(27);
+
+    if (itIsRaining == 1)
+    {
+        Serial1.println("Its Raining");
+        return true;
     }
-    return false;
+    else if (itIsRaining == 0)
+    {
+        Serial1.println("No Rain");
+        return false;
+    }
 }
 
-void turnOnBuzzer() {
-    const int freq = 1000;
-    tone(buzzerPin, freq, 10000);
+bool checkSoilMoistureIsEnough()
+{
+    const int value = analogRead(soilMoisturePin);
+    const int s = map(value, 0, 1023, 0, 255);
+    if (s > 200)
+    {
+        Serial1.println("moisture is high " + String(s));
+        return true;
+    }
+    else
+    {
+        Serial1.println("moisture is low " + String(s));
+        return false;
+    }
 }
 
-void turnOffBuzzer() {
-    noTone(buzzerPin);
+bool isTheSunLightTooMuch()
+{
+    int ldrStatus = analogRead(LDRPin);
+    if (ldrStatus > 500)
+    {
+        Serial1.println("light is enough");
+        return true;
+    }
+    else
+    {
+        Serial1.println("light is not enough");
+        return false;
+    }
 }
